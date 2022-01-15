@@ -179,6 +179,9 @@ offline_owners(Service, CHBin) ->
 
 offline_owners(Service, CHBin, OtherDownNodes) ->
     UpSet = ordsets:from_list(riak_core_node_watcher:nodes(Service)),
+    offline_owners(UpSet, CHBin);
+offline_owners(UpSet, CHBin) when is_list(UpSet) ->
+    %% UpSet is an ordset of available nodes
     DownVNodes = chashbin:to_list_filter(fun({_Index, Node}) ->
                                                  (not is_up(Node, UpSet) or lists:member(Node,OtherDownNodes))
                                          end, CHBin),

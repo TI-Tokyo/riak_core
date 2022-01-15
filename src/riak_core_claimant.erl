@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2012-2015 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -763,24 +763,63 @@ get_type_status(_BucketType, undefined) ->
     undefined;
 get_type_status(BucketType, Props) ->
     case type_active(Props) of
-        true -> active;
-        false -> get_remote_type_status(BucketType, Props)
+        true  ->
+            active;
+        false ->
+            Is_ddl_compiled = is_ddl_compiled(get_remote_ddl_compiled_status(BucketType, Props)),
+            is_type_ready(
+                Props, get_type_status(BucketType), 
+                Is_ddl_compiled)
     end.
 
+%%
+all_members() ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    riak_core_ring:all_members(Ring).
+
 %% @private
-get_remote_type_status(BucketType, Props) ->
-    {ok, R} = riak_core_ring_manager:get_my_ring(),
-    Members = riak_core_ring:all_members(R),
-    {AllProps, BadNodes} = rpc:multicall(lists:delete(node(), Members),
-                                         riak_core_metadata,
-                                         get, [?BUCKET_TYPE_PREFIX, BucketType, [{default, []}]]),
+-spec get_type_status(BucketType::binary()) ->
+    {AllProps::[any()], BadNodes::[node()]}.
+get_type_status(BucketType) ->
+    rpc:multicall(all_members(),
+                  riak_core_metadata,
+                  get, [?BUCKET_TYPE_PREFIX, BucketType, [{default, []}]]).
+
+%%
+get_remote_ddl_compiled_status(BucketType, Props) ->
+    case proplists:get_value(ddl, Props) of
+        undefined ->
+            no_ddl_to_compile;
+        DDL ->
+            rpc:multicall(all_members(),
+                          riak_core_metadata_evt_sup,
+                          is_type_compiled, [BucketType, DDL])
+    end.
+
+%% Checks if the result of the call to is_type_compiled across the cluster.
+is_ddl_compiled(no_ddl_to_compile) ->
+    true;
+is_ddl_compiled({_, BadNodes}) when BadNodes =/= [] ->
+    false;
+is_ddl_compiled({Results, _}) ->
+    lists:all(fun(E) -> E == true end, Results).
+
+%% Check if this nodes and other nodes in the cluster have the same properties
+%% for a bucket type.
+-spec is_type_ready(Props::[proplists:property()],
+                    TypeReadyRpcResult::{[term()], [node()]},
+                    IsDDLCompiled::boolean()) -> created | ready.
+is_type_ready(_,_,false) ->
+    created;
+is_type_ready(Props, {AllProps, BadNodes}, _) ->
     SortedProps = lists:ukeysort(1, Props),
     %% P may be a {badrpc, ...} in addition to a list of properties when there are older nodes involved
     DiffProps = [P || P <- AllProps, (not is_list(P) orelse lists:ukeysort(1, P) =/= SortedProps)],
     case {DiffProps, BadNodes} of
         {[], []} -> ready;
-        %% unreachable nodes may or may not have correct value, so we assume they dont
-        {_, _} -> created
+        % unreachable nodes may or may not have correct value, so we assume
+        % they dont
+        {_,_} -> created
     end.
 
 %% @private

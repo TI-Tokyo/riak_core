@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2011 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2011-2015 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -21,7 +21,7 @@
 -module(riak_core_console).
 %% Legacy exports - unless needed by other modules, only expose
 %% functionality via command/1
--export([member_status/1, ring_status/1, print_member_status/2,
+-export([member_status/1, ring_status/1, print_member_status/1,
          stage_leave/1, stage_remove/1, stage_replace/1, stage_resize_ring/1,
          stage_force_replace/1, print_staged/1, commit_staged/1,
          clear_staged/1, transfer_limit/1, pending_claim_percentage/2,
@@ -31,7 +31,8 @@
          print_users/1, print_user/1, print_sources/1,
          print_groups/1, print_group/1, print_grants/1,
          security_enable/1, security_disable/1, security_status/1, ciphers/1,
-	 stat_show/1, stat_info/1, stat_enable/1, stat_disable/1, stat_reset/1]).
+         timezone/1,
+         stat_show/1, stat_info/1, stat_enable/1, stat_disable/1, stat_reset/1]).
 
 %% New CLI API
 -export([command/1]).
@@ -53,7 +54,7 @@ pending_claim_percentage(Ring, Node) ->
 
 member_status([]) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    print_member_status(Ring, legacy_gossip(Ring)).
+    print_member_status(Ring).
 
 legacy_gossip(Ring) ->
     Members = riak_core_ring:all_members(Ring),
@@ -616,9 +617,6 @@ is_claimant_error(Node, Action) ->
 
 print_staged([]) ->
     case riak_core_claimant:plan() of
-        {error, legacy} ->
-            io:format("The cluster is running in legacy mode and does not "
-                      "support plan/commit.~n");
         {error, ring_not_ready} ->
             io:format("Cannot plan until cluster state has converged.~n"
                       "Check 'Ring Ready' in 'riak-admin ring_status'~n");
@@ -706,9 +704,7 @@ print_plan(Changes, Ring, NextRings) ->
     ok.
 
 output(Ring, NextRing) ->
-    Members = riak_core_ring:all_members(NextRing),
-    LegacyGossip = orddict:from_list([{Node, false} || Node <- Members]),
-    riak_core_console:print_member_status(NextRing, LegacyGossip),
+    riak_core_console:print_member_status(NextRing),
     io:format("~n"),
 
     FutureRing = riak_core_ring:future_ring(NextRing),
@@ -777,9 +773,6 @@ commit_staged([]) ->
     case riak_core_claimant:commit() of
         ok ->
             io:format("Cluster changes committed~n");
-        {error, legacy} ->
-            io:format("The cluster is running in legacy mode and does not "
-                      "support plan/commit.~n");
         {error, nothing_planned} ->
             io:format("You must verify the plan with "
                       "'riak-admin cluster plan' before committing~n");
@@ -799,6 +792,27 @@ commit_staged([]) ->
                       "may have changed, please verify the~n"
                       "plan and try to commit again~n")
     end.
+
+timezone([]) ->
+    TZ = riak_core_metadata:get({riak_core, timezone}, string,
+                                [{default, "not configured"}]),
+    io:format("~s~n", [TZ]);
+timezone([TZString]) ->
+    TZ = jam:compile(jam_iso8601:parse_tz(TZString)),
+    attempt_set_timezone(jam:is_valid(TZ), TZ, TZString).
+
+attempt_set_timezone(false, _TZ, String) ->
+    io:format("Failed, unrecognized timezone string '~s'~n",
+              [String]);
+attempt_set_timezone(true, TZ, _String) ->
+    NewString = jam_iso8601:to_string(TZ, [{z, false}]),
+    riak_core_metadata:put({riak_core, timezone}, string,
+                           NewString),
+    riak_core_metadata:put({riak_core, timezone}, seconds,
+                           jam:tz_to_seconds(TZ)),
+    io:format("Success, timezone is now configured to '~s'~n",
+              [NewString]).
+
 
 transfer_limit([]) ->
     {Limits, Down} =

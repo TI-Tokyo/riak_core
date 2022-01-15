@@ -2,7 +2,7 @@
 %%
 %% riak_core: Core Riak Application
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2015 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -158,8 +158,7 @@ update_known_version(Node, {OtherRing, GVsns}) ->
         undefined ->
             case riak_core_ring:owner_node(OtherRing) of
                 Node ->
-                    %% Ring owner defaults to legacy gossip if unspecified.
-                    {OtherRing, orddict:store(Node, ?LEGACY_RING_VSN, GVsns)};
+                    {OtherRing, orddict:store(Node, ?CURRENT_RING_VSN, GVsns)};
                 _ ->
                     {OtherRing, GVsns}
             end;
@@ -283,8 +282,6 @@ schedule_next_reset() ->
     erlang:send_after(Reset, ?MODULE, reset_tokens).
 
 reconcile(Ring0, [OtherRing0]) ->
-    %% Due to rolling upgrades and legacy gossip, a ring's cluster name
-    %% may be temporarily undefined. This is eventually fixed by the claimant.
     {Ring, OtherRing} = riak_core_ring:reconcile_names(Ring0, OtherRing0),
     Node = node(),
     OtherNode = riak_core_ring:owner_node(OtherRing),
