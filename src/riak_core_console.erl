@@ -56,40 +56,27 @@ member_status([]) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     print_member_status(Ring).
 
-legacy_gossip(Ring) ->
-    Members = riak_core_ring:all_members(Ring),
-    LegacyGossip = [{Node, false} || Node <- Members],
-        % No Nodes should now be using legacy gossip
-    orddict:from_list(LegacyGossip).
-
-print_member_status(Ring, LegacyGossip) ->
+print_member_status(Ring) ->
     io:format("~33..=s Membership ~34..=s~n", ["", ""]),
     io:format("Status     Ring    Pending    Node~n"),
     io:format("~79..-s~n", [""]),
     AllStatus = lists:keysort(2, riak_core_ring:all_member_status(Ring)),
     IsPending = ([] /= riak_core_ring:pending_changes(Ring)),
-    Locations = riak_core_ring:get_nodes_locations(Ring),
 
     {Joining, Valid, Down, Leaving, Exiting} =
         lists:foldl(fun({Node, Status},
                         {Joining0, Valid0, Down0, Leaving0, Exiting0}) ->
-                            StatusOut =
-                                case orddict:fetch(Node, LegacyGossip) of
-                                    false -> Status
-                                end,
-
                             {RingPercent, NextPercent} =
                                 pending_claim_percentage(Ring, Node),
-                            DisplayNode = maybe_add_location(Node, Locations),
 
                             case IsPending of
                                 true ->
-                                    io:format("~-8s  ~5.1f%    ~5.1f%    ~s~n",
-                                              [StatusOut, RingPercent,
-                                               NextPercent, DisplayNode]);
+                                    io:format("~-8s  ~5.1f%    ~5.1f%    ~p~n",
+                                              [Status, RingPercent,
+                                               NextPercent, Node]);
                                 false ->
-                                    io:format("~-8s  ~5.1f%      --      ~s~n",
-                                              [StatusOut, RingPercent, DisplayNode])
+                                    io:format("~-8s  ~5.1f%      --      ~p~n",
+                                              [Status, RingPercent, Node])
                             end,
                             case Status of
                                 joining ->
@@ -108,14 +95,6 @@ print_member_status(Ring, LegacyGossip) ->
     io:format("Valid:~b / Leaving:~b / Exiting:~b / Joining:~b / Down:~b~n",
               [Valid, Leaving, Exiting, Joining, Down]),
     ok.
-
-maybe_add_location(Node, Locations) ->
-    case riak_core_location:get_node_location(Node, Locations) of
-        undefined ->
-            atom_to_list(Node);
-        Location ->
-            atom_to_list(Node) ++ " (" ++ Location ++ ")"
-    end.
 
 ring_status([]) ->
     {Claimant, RingReady, Down, MarkedDown, Changes} =
@@ -657,9 +636,7 @@ print_plan(Changes, Ring, NextRings) ->
                       io:format("resize-ring    ~p to ~p partitions~n",[CurrentSize,NewRingSize]);
                  ({_, abort_resize}) ->
                       CurrentSize = riak_core_ring:num_partitions(Ring),
-                      io:format("resize-ring    abort. current size: ~p~n", [CurrentSize]);
-                 ({Node, {set_location, Location}}) ->
-                      io:format("set-location  ~p to ~s~n", [Node, Location])
+                      io:format("resize-ring    abort. current size: ~p~n", [CurrentSize])
               end, Changes),
     io:format("~79..-s~n", [""]),
     io:format("~n"),
@@ -683,16 +660,6 @@ print_plan(Changes, Ring, NextRings) ->
                       "cluster transitions~n~n", [Transitions])
     end,
 
-    Leaves = length(lists:filter(fun({_N, A}) -> A == leave end, Changes)) > 0,
-
-    case Leaves and app_helper:get_env(riak_core, full_rebalance_onleave) of
-        true ->
-            io:format("WARNING: Full rebalance forced by non-default "
-                        "option riak_core.full_rebalance_onleave = true~n~n");
-        _ ->
-            ok
-    end,
-
     _ = lists:foldl(fun({Ring1, Ring2}, I) ->
                            io:format("~79..#s~n", [""]),
                            io:format("~24.. s After cluster transition ~b/~b~n",
@@ -713,13 +680,6 @@ output(Ring, NextRing) ->
             ok;
         _ ->
             io:format("WARNING: Not all replicas will be on distinct nodes~n~n")
-    end,
-
-    case riak_core_location:check_ring(FutureRing) of
-        [] ->
-            ok;
-        _ ->
-            io:format("WARNING: Not all replicas will be on distinct locations~n~n")
     end,
 
     Owners1 = riak_core_ring:all_owners(Ring),

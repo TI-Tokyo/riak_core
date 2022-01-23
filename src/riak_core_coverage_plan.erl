@@ -318,26 +318,26 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
                 end
         end,
 
-    CoveragePlanFun =
+    CoverageResult =
         case application:get_env(riak_core, legacy_coverage_planner, false) of
             true ->
                 %% Safety net for refactoring, we can still go back to old
                 %% function if necessary.  Note 35 x performance degradation
                 %% with this function with ring_size of 1024
-                fun find_minimal_coverage/5;
+                find_minimal_coverage(AllPartitions,
+                                      AllVnodes -- UnavailableVnodes,
+                                      Offset,
+                                      NVal,
+                                      erlang:min(NVal, PVC),
+                                      []);
             false ->
-                fun initiate_plan/5
+                initiate_plan(ReqId,
+                              NVal,
+                              PartitionCount,
+                              UnavailableKeySpaces,
+                              min(PVC, NVal))
         end,
 
-    %% The offset value serves as a tiebreaker in the
-    %% compare_vnode_keyspaces function and is used to distribute work
-    %% to different sets of VNodes.
-    CoverageResult = CoveragePlanFun(AllPartitions,
-                                     AllVnodes -- UnavailableVnodes,
-                                     Offset,
-                                     NVal,
-                                     lists:min([PVC, NVal]),
-                                     []),
     case CoverageResult of
         {ok, CoveragePlan} ->
             %% Assemble the data structures required for

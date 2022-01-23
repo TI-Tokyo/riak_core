@@ -170,22 +170,26 @@ first_up(DocIdx, Service) ->
                                    end, Itr),
     chashbin:itr_value(Itr2).
 
+
 offline_owners(Service) ->
     {ok, CHBin} = riak_core_ring_manager:get_chash_bin(),
     offline_owners(Service, CHBin).
 
-offline_owners(Service, CHBin) ->
-    offline_owners(Service, CHBin, []).
+offline_owners(Service, CHBin) when is_atom(Service) ->
+    offline_owners(Service, CHBin, []);
+offline_owners(UpSet, CHBin) when is_list(UpSet) ->
+    %% UpSet is an ordset of available nodes
+    chashbin:to_list_filter(fun({_Index, Node}) ->
+                                    not is_up(Node, UpSet)
+                            end, CHBin).
 
 offline_owners(Service, CHBin, OtherDownNodes) ->
     UpSet = ordsets:from_list(riak_core_node_watcher:nodes(Service)),
-    offline_owners(UpSet, CHBin);
-offline_owners(UpSet, CHBin) when is_list(UpSet) ->
-    %% UpSet is an ordset of available nodes
-    DownVNodes = chashbin:to_list_filter(fun({_Index, Node}) ->
-                                                 (not is_up(Node, UpSet) or lists:member(Node,OtherDownNodes))
-                                         end, CHBin),
-    DownVNodes.
+    chashbin:to_list_filter(fun({_Index, Node}) ->
+                                    (not is_up(Node, UpSet) or lists:member(Node,OtherDownNodes))
+                            end, CHBin).
+
+
 
 %% @doc Split a preference list into up and down lists.
 -spec check_up(preflist(), [node()], preflist_ann(), preflist()) -> {preflist_ann(), preflist()}.
