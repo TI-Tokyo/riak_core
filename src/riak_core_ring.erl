@@ -2,7 +2,7 @@
 %%
 %% riak_core: Core Riak Application
 %%
-%% Copyright (c) 2007-2015 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -55,6 +55,8 @@
          remove_meta/2]).
 
 -export([cluster_name/1,
+         legacy_ring/1,
+         legacy_reconcile/2,
          upgrade/1,
          downgrade/2,
          set_tainted/1,
@@ -204,6 +206,12 @@
 %% Public API
 %% ===================================================================
 
+%% @doc Returns true if the given ring is a legacy ring.
+legacy_ring(#chstate{}) ->
+    true;
+legacy_ring(_) ->
+    false.
+
 %% @doc Upgrade old ring structures to the latest format.
 upgrade(Old=?CHSTATE{}) ->
     Old;
@@ -250,6 +258,9 @@ downgrade(2,State=?CHSTATE{}) ->
 set_tainted(Ring) ->
     update_meta(riak_core_ring_tainted, true, Ring).
 
+check_tainted(#chstate{}, _Msg) ->
+    %% Legacy ring is never tainted
+    ok;
 check_tainted(Ring=?CHSTATE{}, Msg) ->
     Exit = app_helper:get_env(riak_core, exit_when_tainted, false),
     case {get_meta(riak_core_ring_tainted, Ring), Exit} of

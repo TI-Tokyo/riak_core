@@ -296,6 +296,8 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
                               AllVnodes),
     UnavailableVnodes = identify_unavailable_vnodes(CHBin, RingSize,
                                                     Service, AvailNodeFun),
+    RingIndexInc = chash:ring_increment(RingSize),
+    UnavailableKeySpaces = [(N div RingIndexInc) || N <- UnavailableVnodes],
 
     %% Create function to map coverage keyspaces to
     %% actual VNode indexes and determine which VNode
@@ -333,7 +335,7 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
             false ->
                 initiate_plan(ReqId,
                               NVal,
-                              PartitionCount,
+                              RingSize,
                               UnavailableKeySpaces,
                               min(PVC, NVal))
         end,
