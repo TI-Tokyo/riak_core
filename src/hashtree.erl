@@ -133,13 +133,8 @@
 -export([compare2/4]).
 -export([multi_select_segment/3, safe_decode/1]).
 
--ifdef(namespaced_types).
 -type hashtree_dict() :: dict:dict().
 -type hashtree_array() :: array:array().
--else.
--type hashtree_dict() :: dict().
--type hashtree_array() :: array().
--endif.
 
 -define(ALL_SEGMENTS, ['*', '*']).
 -define(BIN_TO_INT(B), list_to_integer(binary_to_list(B))).

@@ -27,7 +27,7 @@
 %% - https://github.com/basho/riak_core/issues/946
 -dialyzer({nowarn_function, [get_vnode/3, register_vnode_stats/3]}).
 
--compile({nowarn_deprecated_function, 
+-compile({nowarn_deprecated_function,
             [{gen_fsm, send_all_state_event, 2}]}).
 
 -behaviour(gen_server).
@@ -540,7 +540,7 @@ ensure_vnodes_started(Ring) ->
     case riak_core_ring:check_lastgasp(Ring) of
         true ->
             lager:info("Don't start vnodes - last gasp ring");
-        false ->    
+        false ->
             spawn(fun() ->
                   try
                       riak_core_ring_handler:ensure_vnodes_started(Ring)

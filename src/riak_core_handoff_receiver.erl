@@ -24,8 +24,8 @@
 -include("riak_core_handoff.hrl").
 -behaviour(riak_core_gen_server).
 
--compile({nowarn_deprecated_function, 
-            [{gen_fsm, sync_send_all_state_event, 3}]}).
+-compile({nowarn_deprecated_function,
+          [{gen_fsm, sync_send_all_state_event, 3}]}).
 
 -export([start_link/0,                          % Don't use SSL
          start_link/1,                          % SSL options list, empty=no SSL
@@ -50,13 +50,6 @@
 %% set the timeout for the vnode to process the handoff_data msg to 60s
 -define(VNODE_TIMEOUT, 60000).
 
--ifdef(deprecated_21).
-ssl_handshake(Socket, SslOpts, Timeout) ->
-    ssl:handshake(Socket, SslOpts, Timeout).
--else.
-ssl_handshake(Socket, SslOpts, Timeout) ->
-    ssl:ssl_accept(Socket, SslOpts, Timeout).
--endif.
 
 start_link() ->
     start_link([]).
@@ -81,7 +74,7 @@ init([SslOpts]) ->
 handle_call({set_socket, Socket0}, _From, State = #state{ssl_opts = SslOpts}) ->
     SockOpts = [{active, once}, {packet, 4}, {header, 1}],
     Socket = if SslOpts /= [] ->
-                     {ok, Skt} = ssl_handshake(Socket0, SslOpts, 30*1000),
+                     {ok, Skt} = ssl:handshake(Socket0, SslOpts, 30*1000),
                      ok = ssl:setopts(Skt, SockOpts),
                      Peer = safe_peername(Skt, ssl),
                      Skt;

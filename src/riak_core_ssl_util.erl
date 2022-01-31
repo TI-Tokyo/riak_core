@@ -40,32 +40,10 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--ifdef(deprecated_21).
-ssl_handshake(Socket, SslOpts) ->
-    ssl:handshake(Socket, SslOpts).
--else.
-ssl_handshake(Socket, SslOpts) ->
-    ssl:ssl_accept(Socket, SslOpts).
--endif.
-
--ifdef(deprecated_21).
-    -ifdef(deprecated_22).
-        openssl_suite(Cipher) ->
-            ssl_cipher_format:suite_openssl_str_to_map(Cipher).
-        openssl_suite_name(Cipher) ->
-            ssl_cipher_format:suite_map_to_openssl_str(ssl_cipher_format:suite_bin_to_map(Cipher)).
-    -else.
-        openssl_suite(Cipher) ->
-            ssl_cipher_format:openssl_suite(Cipher).
-        openssl_suite_name(Cipher) ->
-            ssl_cipher_format:openssl_suite_name(Cipher).
-    -endif.
--else.
 openssl_suite(Cipher) ->
     ssl_cipher:openssl_suite(Cipher).
 openssl_suite_name(Cipher) ->
     ssl_cipher:openssl_suite_name(Cipher).
--endif.
 
 maybe_use_ssl(App) ->
     SSLOpts = [
@@ -154,7 +132,7 @@ upgrade_server_to_ssl(Socket, App) ->
         false ->
             {error, no_ssl_config};
         Config ->
-            ssl_handshake(Socket, Config)
+            ssl:handshake(Socket, Config)
     end.
 
 load_certs(undefined) ->
