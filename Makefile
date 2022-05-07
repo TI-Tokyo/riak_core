@@ -7,7 +7,7 @@ compile:
 clean:
 	$(REBAR) clean
 
-cover: 
+cover:
 	$(REBAR) eunit --cover
 	$(REBAR) cover
 

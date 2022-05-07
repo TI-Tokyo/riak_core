@@ -3,14 +3,14 @@
 %%
 %% Usage example (in the Erlang shell):
 %%
-%% code:add_path("/home/user/path-to-handoff_perftool"), l(handoff_perftool). 
+%% code:add_path("/home/user/path-to-handoff_perftool"), l(handoff_perftool).
 %% handoff_perftool:go({10000, 1000}).                          % use 10000 objects of 1000 bytes each
 %% handoff_perftool:go(5, {10000, 1000}).                       % use 5 vnodes and 10000 objects of 1000 bytes each
 %% handoff_perftool:go(1, {10000, 1000}, strategy_roundrobin).  % 1 vnode, 10k objects of 1k each, round-robin strategy
 %%
 
 -module(handoff_perftool).
- 
+
 -export([
             %% If we get any more options, we should use something associative rather than adding more options:
             go/0, go/1, go/2, go/3,
@@ -18,7 +18,7 @@
             get_ring_members/0,
             get_ring_owners/0
         ]).
- 
+
 -include("riak_core_vnode.hrl").
 -include("riak_core_handoff.hrl").
 
@@ -35,7 +35,7 @@
 log_info(Message) -> lager:log(info, self(), Message).
 log_info(Message, Params) -> lager:log(info, self(), Message, Params).
 
-go() -> 
+go() ->
     go(1, {10000, 1000}).
 
 go({NObjs, ValueSize}) ->
@@ -74,7 +74,7 @@ go(NVnodes, {NObjs, ValueSize}, GatherStrategy, ConcurrencyN) ->
 
 gather_targets(NVnodes, GatherStrategy) ->
     log_info("Using gather strategy ~p.~n", [GatherStrategy]),
-    case GatherStrategy of 
+    case GatherStrategy of
         strategy_other_owner -> gather_vnodes_1(NVnodes);
         strategy_roundrobin  -> gather_vnodes_rr(NVnodes);
         _ -> log_info("Invalid gather strategy " ++ GatherStrategy),
@@ -102,7 +102,7 @@ gather_vnodes_rr(NVnodes) ->
     %% Map owners to their vnode ids (not including ourselves):
     HandoffMap = dict:erase(node(), lists:foldl(fun({NodeID, NodeName}, AccDict) ->
                                                     dict:append(NodeName, NodeID, AccDict)
-                                                end, 
+                                                end,
                                                 dict:new(), get_ring_owners())),
 
     HandoffMembers = lists:dropwhile(fun(NodeName) -> node() == NodeName end, get_ring_members()),
@@ -151,17 +151,17 @@ seed_data({NEntries, Size}, SecondarySHA1) ->
                                            random_binary(Size, <<>>))),
 
     riak_kv_vnode:local_put(SecondarySHA1, RObj),
- 
+
     seed_data({NEntries - 1, Size}, SecondarySHA1).
 
-%% Construct a random binary object: 
+%% Construct a random binary object:
 random_binary(0, Bin) ->
     Bin;
 random_binary(N, Bin) ->
     X = rand:uniform(255),
     random_binary(N-1, <<Bin/binary, X:8/integer>>).
 
-%% Directly "inject" a object w/ metadata, vtags, etc.: 
+%% Directly "inject" a object w/ metadata, vtags, etc.:
 finalize_object(RObj) ->
     MD0 = case dict:find(clean, riak_object:get_update_metadata(RObj)) of
               {ok, true} ->
@@ -184,7 +184,7 @@ finalize_object(RObj) ->
     NewMD = dict:store(?MD_VTAG, make_vtag(Now),
                        dict:store(?MD_LASTMOD, Now, MD0)),
     riak_object:apply_updates(riak_object:update_metadata(RObj, NewMD)).
- 
+
 make_vtag(Now) ->
     <<HashAsNum:128/integer>> = crypto:md5(term_to_binary({node(), Now})),
     riak_core_util:integer_to_list(HashAsNum,62).
@@ -221,7 +221,7 @@ merge_values(0, _SourceKeys, _SourceMap, Acc) ->
     Acc;
 
 merge_values(N, SourceKeys, SourceMap, Acc) ->
-    { OutputAcc, OutputSourceMap } = 
+    { OutputAcc, OutputSourceMap } =
         lists:foldl(fun(Key, { InnerAcc, InnerSourceMap }) ->
                         { Value, NewSourceMap } = pop_value(Key, InnerSourceMap),
                         { lists:append(InnerAcc, Value), NewSourceMap }
@@ -238,11 +238,11 @@ pop_value(Key, SourceMap) ->
     { Value, NewSourceMap }.
 
 %% Find the key and shortest length of "buckets" in a map of lists:
-shortest_bucket(Key, ValueList, { _, infinity}) -> 
+shortest_bucket(Key, ValueList, { _, infinity}) ->
     { Key, length(ValueList) };
 shortest_bucket(Key, ValueList, { MinKey, MinLen }) ->
     L = length(ValueList),
     case L < MinLen of
         false -> { MinKey, MinLen };
-        true  -> { Key, L } 
+        true  -> { Key, L }
     end.
