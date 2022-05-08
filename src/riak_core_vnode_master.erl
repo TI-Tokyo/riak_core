@@ -26,7 +26,7 @@
 -include("riak_core_vnode.hrl").
 -behaviour(gen_server).
 
--compile({nowarn_deprecated_function, 
+-compile({nowarn_deprecated_function,
             [{gen_fsm, send_event, 2},
                 {gen_fsm, send_all_state_event, 2}]}).
 
@@ -41,6 +41,9 @@
          make_coverage_request/4, all_nodes/1, reg_name/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+-include_lib("kernel/include/logger.hrl").
+
 -record(state, {idxtab, sup_name, vnode_mod, legacy}).
 
 -define(LONG_TIMEOUT, 120*1000).
@@ -227,7 +230,7 @@ handle_cast({wait_for_service, Service}, State) ->
         undefined ->
             ok;
         _ ->
-            lager:debug("Waiting for service: ~p", [Service]),
+            ?LOG_DEBUG("Waiting for service: ~p", [Service]),
             riak_core:wait_for_service(Service)
     end,
     {noreply, State};

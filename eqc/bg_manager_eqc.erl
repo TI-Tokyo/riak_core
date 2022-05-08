@@ -856,6 +856,12 @@ bg_manager_monitors(Pid) ->
     process_info(Pid, monitors).
 
 prop_bgmgr() ->
+    ?SETUP(fun() ->
+                   error_logger:tty(false),
+                   fun() ->
+                        error_logger:tty(true)
+                   end
+           end,
     ?FORALL(Cmds, commands(?MODULE),
     ?SOMETIMES(2,
             aggregate(command_names(Cmds),
