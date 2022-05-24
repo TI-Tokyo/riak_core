@@ -87,6 +87,7 @@
 -module(riak_core_coverage_plan).
 
 -include("riak_core_vnode.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
@@ -296,18 +297,15 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
                               AllVnodes),
     UnavailableVnodes = identify_unavailable_vnodes(CHBin, RingSize,
                                                     Service, AvailNodeFun),
-    RingIndexInc = chash:ring_increment(RingSize),
-    UnavailableKeySpaces = [(N div RingIndexInc) || N <- UnavailableVnodes],
 
     %% Create function to map coverage keyspaces to
     %% actual VNode indexes and determine which VNode
     %% indexes should be filtered.
     CoverageVNodeFun =
-        fun({VNodeID, KeySpaces}, Acc) ->
+        fun({VNodeIndex, KeySpaces}, Acc) ->
                 %% Calculate the VNode index using the
                 %% ring position and the increment of
                 %% ring index values.
-                VNodeIndex = convert(VNodeID, vnode_index),
                 Node = chashbin:index_owner(VNodeIndex, CHBin),
                 CoverageVNode = {VNodeIndex, Node},
                 case length(KeySpaces) < NVal of
@@ -336,7 +334,7 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
                 initiate_plan(ReqId,
                               NVal,
                               RingSize,
-                              UnavailableKeySpaces,
+                              UnavailableVnodes,
                               min(PVC, NVal))
         end,
 
