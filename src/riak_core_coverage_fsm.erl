@@ -310,13 +310,14 @@ initialize(timeout, StateData0=#state{mod=Mod,
     end.
 
 %% @private
-waiting_results({{ReqId, VNode}, Results},
+waiting_results({{ReqId, VNode}, Results_},
                 StateData=#state{coverage_vnodes=CoverageVNodes,
                                  mod=Mod,
                                  mod_state=ModState,
                                  req_id=ReqId,
                                  timeout=Timeout,
                                  process_fun = ProcessFun}) ->
+    Results = ensure_decoded_results(Results_),
     case ProcessFun(VNode, Results, ModState) of
         {ok, UpdModState} ->
             UpdStateData = StateData#state{mod_state=UpdModState},
@@ -374,7 +375,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %% 30% of the query-path time for small queries
 %%
 %% Instead we try Mod:plan/2, if undef, we define it.  On success or
-%% match error on atoms, we pass on Mod:plan/2 
+%% match error on atoms, we pass on Mod:plan/2
 
 plan_callback(Mod) ->
     SuccessFun = fun(CoverageVNodes, ModState) ->
@@ -409,3 +410,8 @@ process_results_callback(Mod) ->
         _:_ -> %% If Mod:plan(a, b, c) fails on atoms
             SuccessFun
     end.
+
+ensure_decoded_results({From, Bucket, {decoded, Results}}) ->
+    {From, Bucket, Results};
+ensure_decoded_results(A) ->
+    A.
