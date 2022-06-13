@@ -302,17 +302,18 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
     %% actual VNode indexes and determine which VNode
     %% indexes should be filtered.
     CoverageVNodeFun =
-        fun({VNodeIndex, KeySpaces}, Acc) ->
+        fun({VnodeID, KeySpaces}, Acc) ->
                 %% Calculate the VNode index using the
                 %% ring position and the increment of
                 %% ring index values.
-                Node = chashbin:index_owner(VNodeIndex, CHBin),
-                CoverageVNode = {VNodeIndex, Node},
+                VnodeIdx = convert({vnode_id, VnodeID, RingSize}, vnode_index),
+                Node = chashbin:index_owner(VnodeIdx, CHBin),
+                CoverageVNode = {VnodeIdx, Node},
                 case length(KeySpaces) < NVal of
                     true ->
-                        KeySpaceIndexes = [convert(PartitionID, keyspace_filter) ||
-                                              PartitionID <- KeySpaces],
-                        {CoverageVNode, [{VNodeIndex, KeySpaceIndexes} | Acc]};
+                        KeySpaceIndexes = [convert({partition_id, PartitionID, RingSize}, keyspace_filter)
+                                           || PartitionID <- KeySpaces],
+                        {CoverageVNode, [{VnodeIdx, KeySpaceIndexes} | Acc]};
                     false ->
                         {CoverageVNode, Acc}
                 end
