@@ -68,7 +68,7 @@
 
 -behaviour(gen_fsm).
 
--compile({nowarn_deprecated_function, 
+-compile({nowarn_deprecated_function,
             [{gen_fsm, start_link, 3},
                 {gen_fsm, start_timer, 2}]}).
 
@@ -112,7 +112,7 @@
                                 {done, UpModState :: tuple()} |
                                 {error, Error :: any()}.
 
--callback finish(clean | {error, Reason :: any()}, ModState :: tuple()) -> 
+-callback finish(clean | {error, Reason :: any()}, ModState :: tuple()) ->
                     {stop, normal, any()}.
 
 -optional_callbacks([process_results/2, process_results/3]).
@@ -191,7 +191,7 @@ init([Mod,
     %% that modules with riak_core_coverage_fsm behaviour now return a
     %% coverage plan function rather than a module.  The four
     %% core_coverage_fsm modules used regularly in RiakTS have all
-    %% been changed to return functions.  
+    %% been changed to return functions.
     %%
     %% However, to ensure backwards compatibility with any modules
     %% that may have been missed, we add a check here in case someone
@@ -199,7 +199,7 @@ init([Mod,
     %% the coverage plan module to the appropriate function for use
     %% further down the stack
 
-    CoveragePlanFn = 
+    CoveragePlanFn =
         case is_atom(CoveragePlanRet) of
             true ->
                 fun CoveragePlanRet:create_plan/6;
