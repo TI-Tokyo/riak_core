@@ -419,8 +419,8 @@ clear_buckets(State=#state{id=Id, ref=Ref}) ->
                           throw({break, Acc})
                   end
           end,
-    Opts = [{first_key, encode_bucket(Id, 0, 0)}],
-    Removed = 
+    Opts = [{start_key, encode_bucket(Id, 0, 0)}],
+    Removed =
         try
             eleveldb:fold(Ref, Fun, 0, Opts)
         catch
