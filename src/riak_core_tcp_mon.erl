@@ -391,14 +391,6 @@ format_socket_stats([{K,V}|T], Buf) ->
 
 -ifdef(TEST).
 
--ifdef(deprecated_21).
-ssl_handshake(Socket) ->
-    ssl:handshake(Socket).
--else.
-ssl_handshake(Socket) ->
-    ssl:ssl_accept(Socket).
--endif.
-
 updown() ->
     %% Set the stat gathering interval to 100ms
     {ok, TCPMonPid} = riak_core_tcp_mon:start_link([{interval, 100}]),
@@ -468,7 +460,7 @@ ssl_test_() ->
         spawn(fun () ->
             %% server
             {ok, S} = ssl:transport_accept(LS),
-            {ok, SslSock} = case ssl_handshake(S) of
+            {ok, SslSock} = case ssl:handshake(S) of
                 ok ->
                     {ok, S};
                 {ok, NewSocket} ->
