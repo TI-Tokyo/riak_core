@@ -89,15 +89,12 @@
 -include("riak_core_vnode.hrl").
 -include_lib("kernel/include/logger.hrl").
 
--ifdef(EQC).
--include_lib("eqc/include/eqc.hrl").
+-ifdef(TEST).
+-include_lib("proper/include/proper.hrl").
+-include_lib("eunit/include/eunit.hrl").
 -export([prop_cover_partitions/0,
          prop_distribution/0,
-         prop_find_coverage_partitions/0,
          prop_pvc/0]).
--endif.
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
 -endif.
 
 %% API
@@ -282,19 +279,6 @@ add_offset(Position, Offset, Top) ->
 create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNodeFun) ->
     RingSize = chashbin:num_partitions(CHBin),
 
-    %% Calculate an offset based on the request id to offer the
-    %% possibility of different sets of VNodes being used even when
-    %% all nodes are available. Used in compare_vnode_keyspaces as a
-    %% tiebreaker.
-    Offset = ReqId rem NVal,
-
-    AllVnodes = list_all_vnode_ids(RingSize),
-    %% Older versions of this call chain used the same list of
-    %% integers for both vnode IDs and partition IDs, which made for
-    %% confusing reading. We can cheat a little less obnoxiously
-    AllPartitions = lists:map(fun({vnode_id, Id, RS}) ->
-                                      {partition_id, Id, RS} end,
-                              AllVnodes),
     UnavailableVnodes = identify_unavailable_vnodes(CHBin, RingSize,
                                                     Service, AvailNodeFun),
 
@@ -320,24 +304,11 @@ create_traditional_plan(VNodeTarget, NVal, PVC, ReqId, Service, CHBin, AvailNode
         end,
 
     CoverageResult =
-        case application:get_env(riak_core, legacy_coverage_planner, false) of
-            true ->
-                %% Safety net for refactoring, we can still go back to old
-                %% function if necessary.  Note 35 x performance degradation
-                %% with this function with ring_size of 1024
-                find_minimal_coverage(AllPartitions,
-                                      AllVnodes -- UnavailableVnodes,
-                                      Offset,
-                                      NVal,
-                                      erlang:min(NVal, PVC),
-                                      []);
-            false ->
-                initiate_plan(ReqId,
-                              NVal,
-                              RingSize,
-                              UnavailableVnodes,
-                              min(PVC, NVal))
-        end,
+        initiate_plan(ReqId,
+                      NVal,
+                      RingSize,
+                      UnavailableVnodes,
+                      min(PVC, NVal)),
 
     case CoverageResult of
         {ok, CoveragePlan} ->
@@ -638,30 +609,6 @@ map_pvc_vnodes([{VnodeIdx, Node}|Tail], SubpID, PVC, Accum) ->
                    [{ VnodeIdx, Node, SubpID }] ++ Accum).
 
 
-%% @private
-increment_vnode({vnode_id, Position, RingSize}, Offset) ->
-    {vnode_id, add_offset(Position, Offset, RingSize), RingSize}.
-
-%% @private
-list_all_vnode_ids(RingSize) ->
-    lists:map(fun(Id) -> {vnode_id, Id, RingSize} end,
-              lists:seq(0, RingSize - 1)).
-
-
-%% @private
-%% Note that these Id values are tagged tuples, not integers
-merge_coverage_results({VnodeId, PartitionIds}, Acc) ->
-    case proplists:get_value(VnodeId, Acc) of
-        undefined ->
-            [{VnodeId, PartitionIds} | Acc];
-        MorePartitionIds ->
-            UniqueValues =
-                lists:usort(PartitionIds ++ MorePartitionIds),
-            [{VnodeId, UniqueValues} |
-             proplists:delete(VnodeId, Acc)]
-    end.
-
-
 %% initiate_plan/5 was added in develop-3.0 after branching off riak_ts
 
 -type vnode_covers() :: {non_neg_integer(), list(non_neg_integer())}.
@@ -783,52 +730,6 @@ develop_plan([HeadVnode|RestVnodes], NVal,
 
 
 %% @private
-%% @doc Generates a minimal set of vnodes and partitions to find the requested data
--spec find_minimal_coverage(list(partition_id()), list(vnode_id()),
-                            non_neg_integer(),
-                            non_neg_integer(),
-                            non_neg_integer(),
-                            list({vnode_id(), list(partition_id())})) ->
-                                   {ok,
-                                    list({vnode_id(), list(partition_id())})} |
-                                   {error, term()}.
-find_minimal_coverage(_AllPartitions, _AvailableVnodes, _Offset, _NVal,
-                      0, Results) ->
-    {ok, Results};
-find_minimal_coverage(AllPartitions,
-                      AvailableVnodes,
-                      Offset,
-                      NVal,
-                      PVC,
-                      ResultsAcc) ->
-    %% Calculate the available keyspaces. The list of
-    %% keyspaces for each vnode that have already been
-    %% covered by the plan are subtracted from the complete
-    %% list of keyspaces so that coverage plans that
-    %% want to cover more one preflist vnode work out
-    %% correctly.
-    AvailableKeySpaces = [{increment_vnode(VNode, Offset),
-                           VNode,
-                           n_keyspaces(VNode, NVal) --
-                               proplists:get_value(VNode, ResultsAcc, [])}
-                          || VNode <- (AvailableVnodes)],
-    case find_coverage_vnodes(ordsets:from_list(AllPartitions),
-                              AvailableKeySpaces,
-                              ResultsAcc) of
-        {ok, CoverageResults} ->
-            UpdatedResults =
-                lists:foldl(fun merge_coverage_results/2, ResultsAcc, CoverageResults),
-            find_minimal_coverage(AllPartitions,
-                                  AvailableVnodes,
-                                  Offset,
-                                  NVal,
-                                  PVC-1,
-                                  UpdatedResults);
-        Error ->
-            Error
-    end.
-
-%% @private
 %% @doc Find the N key spaces for a VNode. These are *not* the same as
 %% the filters for the traditional cover plans; the filters would be
 %% incremented by 1
@@ -837,84 +738,6 @@ n_keyspaces({vnode_id, VNode, RingSize}, N) ->
     ordsets:from_list([{partition_id, X rem RingSize, RingSize} ||
                           X <- lists:seq(RingSize + VNode - N,
                                          RingSize + VNode - 1)]).
-
-%% @private
-%% @doc Find a minimal set of covering VNodes.
-%%
-%% Takes:
-%%   A list of all partition IDs still needed for coverage
-%%   A list of available vnode IDs with partitions they cover
-%%   An accumulator for results
-%% Returns a list of {vnode_id, [partition_id,...]} tuples.
--spec find_coverage_vnodes(list(partition_id()), list(vnode_id()), list({vnode_id(), list(partition_id())})) ->
-                                  {ok, list({vnode_id(), list(partition_id())})}|
-                                  {insufficient_vnodes_available, list(vnode_id()), list({vnode_id(), list(partition_id())})}.
-find_coverage_vnodes([], _, Coverage) ->
-    {ok, lists:sort(Coverage)};
-find_coverage_vnodes(Partitions, [], Coverage) ->
-    {insufficient_vnodes_available, Partitions, lists:sort(Coverage)};
-find_coverage_vnodes(Partitions, AvailableVnodes, Coverage) ->
-    case find_best_vnode_for_keyspace(Partitions, AvailableVnodes) of
-        {error, no_coverage} ->
-            %% Bail
-            find_coverage_vnodes(Partitions, [], Coverage);
-        VNode ->
-            {value, {_, VNode, Covers}, UpdAvailable} = lists:keytake(VNode, 2, AvailableVnodes),
-            UpdCoverage = [{VNode, ordsets:intersection(Partitions, Covers)} | Coverage],
-            UpdPartitions = ordsets:subtract(Partitions, Covers),
-            find_coverage_vnodes(UpdPartitions, UpdAvailable, UpdCoverage)
-    end.
-
-%% @private
-%% Find the vnode that covers the most of the remaining keyspace. Use
-%% VNode ID + offset (determined by request ID) as the tiebreaker
-%% (more precisely, the tagged tuple that contains the offset vnode's
-%% ID)
-find_best_vnode_for_keyspace(PartitionIDs, Available) ->
-    CoverCount = [{covers(PartitionIDs, CoversKeys), VNode, TieBreaker} ||
-                     {TieBreaker, VNode, CoversKeys} <- Available],
-
-    %% Head of the list is the best result unless all of them have
-    %% zero overlap with the partitions for which we need coverage
-    interpret_best_vnode(hd(lists:sort(fun compare_vnode_keyspaces/2,
-                                       CoverCount))).
-
-%% @private
-interpret_best_vnode({0, _, _}) ->
-    {error, no_coverage};
-interpret_best_vnode({_, VNode, _}) ->
-    VNode.
-
-%% @private
-%% There is a potential optimization here once
-%% the partition claim logic has been changed
-%% so that physical nodes claim partitions at
-%% regular intervals around the ring.
-%% The optimization is for the case
-%% when the partition count is not evenly divisible
-%% by the n_val and when the coverage counts of the
-%% two arguments are equal and a tiebreaker is
-%% required to determine the sort order. In this
-%% case, choosing the lower node for the final
-%% vnode to complete coverage will result
-%% in an extra physical node being involved
-%% in the coverage plan so the optimization is
-%% to choose the upper node to minimize the number
-%% of physical nodes.
-compare_vnode_keyspaces({CA, _VA, TBA}, {CB, _VB, TBB}) ->
-    if
-        CA > CB -> %% Descending sort on coverage
-            true;
-        CA < CB ->
-            false;
-        true ->
-            TBA < TBB %% If equal coverage choose the lower node.
-    end.
-
-%% @private
-%% @doc Count how many of CoversKeys appear in KeySpace
-covers(KeySpace, CoversKeys) ->
-    ordsets:size(ordsets:intersection(KeySpace, CoversKeys)).
 
 %% @private
 %% Determines the number of non-mask bits in the 2^160 keyspace.
@@ -945,16 +768,13 @@ pow(N, Exp) when is_integer(Exp), Exp > 0 ->
     N * pow(N, Exp - 1).
 
 uniq_n_out_of_m(N, M) when N =< M ->
-    ?LET({Candidates, Split}, {shuffle(lists:seq(0, M - 1)), choose(0, N - 1)},
+    ?LET({Candidates, Split}, {proper:shuffle(lists:seq(0, M - 1)), proper:choose(0, N - 1)},
          begin
              {L, _} = lists:split(Split, Candidates), L
          end).
 
 prop_cover_partitions() ->
     prop_cover_partitions(fun initiate_plan/5).
-
-prop_find_coverage_partitions() ->
-    prop_cover_partitions(fun find_coverage/5).
 
 %% A coverage plan should contain all partitions
 %% and should not return an unavailable node
@@ -994,7 +814,7 @@ prop_distribution(F) ->
                 Plans = [ F(ReqId, NVal, PartitionCount, Unavailable, PVC)
                           || ReqId <- lists:seq(0, PartitionCount -1) ],
                 Tags = lists:usort([ element(1, Plan) || Plan <- Plans ]),
-                ?WHENFAIL(eqc:format("Plans: ~p with distribution ~p\n", [Plans, distribution(Plans)]),
+                ?WHENFAIL(io:format("Plans: ~p with distribution ~p\n", [Plans, distribution(Plans)]),
                           conjunction([{nok_all_nok, length(Tags) == 1}] ++
                                       [{similar_set, max_diff(length(Unavailable), [ length(Plan) || {_, Plan} <- Plans ])}
                                        || Tags == [ok]] ++
@@ -1008,10 +828,10 @@ prop_distribution(F) ->
 %% But, if nodes are unavailable, then this might not work out, then
 %% a next best solution should be presented.
 prop_pvc() ->
-    ?FORALL({NVal, PartitionCount}, {choose(3,5), pow(2, choose(3, 8))},
-    ?FORALL({ReqId, Unavailable}, {choose(0, PartitionCount),
+    ?FORALL({NVal, PartitionCount}, {proper:choose(3,5), pow(2, proper:choose(3, 8))},
+    ?FORALL({ReqId, Unavailable}, {proper:choose(0, PartitionCount),
                                    uniq_n_out_of_m(NVal, PartitionCount)},
-    ?FORALL(PVC, choose(1, NVal),
+    ?FORALL(PVC, proper:choose(1, NVal),
             collect({pvc, PVC},
             begin
                 PVCPlan = initiate_plan(ReqId, NVal, PartitionCount, Unavailable, PVC),
@@ -1019,7 +839,7 @@ prop_pvc() ->
                 case {OnePlan, PVCPlan} of
                     {{ok, _}, {ok, Plan}} ->
                          Distribution = distribution([ P || {_, Ps} <- Plan, P <- Ps ], []),
-                         ?WHENFAIL(eqc:format("Plan: ~p with distribution ~p\n", [Plan, Distribution]),
+                         ?WHENFAIL(io:format("Plan: ~p with distribution ~p\n", [Plan, Distribution]),
                                    conjunction([{partition_count, same_count([{x, PVC} | Distribution])}]));
                     {{ok, _}, {insufficient_vnodes_available, _, Plan}} ->
                         Distribution = distribution([ P || {_, Ps} <- Plan, P <- Ps ], []),
@@ -1059,83 +879,9 @@ same_count([{_, Count} | Rest]) ->
     equals([ C || {_, C} <- Rest, C /= Count ], []).
 
 
--endif.
-
--ifdef(TEST).
-
-%% Unit testing at moment, but there appear to be some obvious properties:
-%% - The output of find_coverage is [{A, [B]}] - where accumulation of all [B]
-%% should be equal to the KeySpaces
-%% - The accumulation of [A] should not include any unavailable KeySpaces
-%% - The length of the list should be optimal?
-
-eight_vnode_prefactor_test() ->
-    Offset = 0,
-    NVal = 3,
-    PartitionCount = 8,
-    UnavailableKeySpaces = [],
-    PVC = 1,
-    {ok, VnodeCovers0} =
-        find_coverage(Offset, NVal, PartitionCount,
-                        UnavailableKeySpaces,
-                        PVC),
-    R0 = [{0, [5, 6, 7]}, {3, [0, 1, 2]}, {5, [3, 4]}],
-    ?assertMatch(R0, VnodeCovers0),
-
-    UnavailableKeySpaces1 = [3, 7],
-    {ok, VnodeCovers1} =
-        find_coverage(Offset, NVal, PartitionCount,
-                        UnavailableKeySpaces1,
-                        PVC),
-    % Is the result below the most efficient - still only 3 vnodes to be asked
-    % R1 = [{0, [5, 6, 7]}, {2, [0, 1]}, {5, [2, 3, 4]}],
-    % Actual result returned needs to cover 4 vnodes
-    R1 = [{0, [5, 6, 7]}, {1, [0]}, {4, [1, 2, 3]}, {5, [4]}],
-    ?assertMatch(R1, VnodeCovers1),
-
-    Offset2 = 1,
-    {ok, VnodeCovers2} =
-        find_coverage(Offset2, NVal, PartitionCount,
-                        UnavailableKeySpaces,
-                        PVC),
-    % The result here is effective - as we want the use of offset to lead to
-    % distinct choices of cover vnodes, and [2, 4, 7] is distinct to [0, 3, 5]
-    R2 = [{2, [0, 1, 7]}, {4, [2, 3]}, {7, [4, 5, 6]}],
-    ?assertMatch(R2, VnodeCovers2),
-
-    Offset3 = 2,
-    {ok, VnodeCovers3} =
-        find_coverage(Offset3, NVal, PartitionCount,
-                        UnavailableKeySpaces,
-                        PVC),
-    R3 = [{1, [0, 6, 7]}, {3, [1, 2]}, {6, [3, 4, 5]}],
-    ?assertMatch(R3, VnodeCovers3),
-
-    %% The Primay Vnode Count- now set to 2 (effectively a r value of 2)
-    %% Each partition must be included twice in the result
-    PVC4 = 2,
-    {ok, VnodeCovers4} =
-        find_coverage(Offset, NVal, PartitionCount,
-                        UnavailableKeySpaces,
-                        PVC4),
-    R4 = [{0, [5, 6, 7]}, {1, [0, 6, 7]}, {3, [0, 1, 2]}, {4, [1, 2, 3]},
-            {5, [3, 4]}, {6, [4, 5]}],
-    %% For r of 2 - need to check at n_val * 2 vnodes - so count is optimal
-    ?assertMatch(R4, lists:keysort(1, VnodeCovers4)).
-
-
-changing_repeated_vnode_CODEFAIL_prefactor_test() ->
-    MaxCount = changing_repeated_vnode_tester(fun find_coverage/5, 200),
-
-    % This assertion is bad!
-    % This demonstrates that the prefactored code fails the test of providing
-    % well distributed coverage plans
-    ?assertEqual(true, MaxCount > 100).
-
 changing_repeated_vnode_refactor_test() ->
     MaxCount = changing_repeated_vnode_tester(fun initiate_plan/5, 200),
-
-    ?assertEqual(true, MaxCount < 100).
+    ?assert(MaxCount < 100).
 
 
 changing_repeated_vnode_tester(CoverageFun, Runs) ->
@@ -1165,7 +911,7 @@ changing_repeated_vnode_tester(CoverageFun, Runs) ->
             lists:keysort(2, lists:foldl(CountVnodesFun, [], AllVnodes))),
 
     io:format(user,
-                "~nVnode=~w MaxCount=~w out of ~w queries~n",
+                "(Vnode=~w MaxCount=~w out of ~w queries)",
                 [Vnode, MaxCount, Runs]),
 
     MaxCount.
@@ -1201,38 +947,20 @@ all_refactor_1024_ring_tester() ->
 refactor_2048ring_test() ->
     ring_tester(2048, fun initiate_plan/5).
 
-prefactor_1024ring_test() ->
-    ring_tester(1024, fun find_coverage/5).
-
-prefactor_ns1024ring_test() ->
-    nonstandardring_tester(1024, fun find_coverage/5).
-
-refactor_1024ring_test() ->
-    ring_tester(1024, fun initiate_plan/5).
-
 refactor_ns1024ring_test() ->
     nonstandardring_tester(1024, fun initiate_plan/5).
 
-prefactor_512ring_test() ->
-    ring_tester(512, fun find_coverage/5).
+refactor_1024ring_test() ->
+    ring_tester(1024, fun initiate_plan/5).
 
 refactor_512ring_test() ->
     ring_tester(512, fun initiate_plan/5).
 
 prefactor_256ring_test() ->
-    ring_tester(256, fun find_coverage/5).
-
-refactor_256ring_test() ->
     ring_tester(256, fun initiate_plan/5).
-
-prefactor_128ring_test() ->
-    ring_tester(256, fun find_coverage/5).
 
 refactor_128ring_test() ->
-    ring_tester(256, fun initiate_plan/5).
-
-prefactor_64ring_test() ->
-    ring_tester(64, fun find_coverage/5).
+    ring_tester(128, fun initiate_plan/5).
 
 refactor_64ring_test() ->
     ring_tester(64, fun initiate_plan/5).
@@ -1243,7 +971,7 @@ compare_vnodesused_test() ->
     compare_tester(256).
 
 compare_tester(RingSize) ->
-    PFC = nonstandardring_tester(RingSize, fun find_coverage/5),
+    PFC = nonstandardring_tester(RingSize, fun initiate_plan/5),
     RFC = nonstandardring_tester(RingSize, fun initiate_plan/5),
     % With a little wiggle room - we've not made the number of vnodes
     % used worse
@@ -1311,13 +1039,6 @@ multifailure_r2_post_test() ->
     multi_failure_tester(256, fun initiate_plan/5),
     multi_failure_tester(512, fun initiate_plan/5),
     multi_failure_tester(1024, fun initiate_plan/5).
-
-multifailure_r2_pre_test() ->
-    multi_failure_tester(32, fun find_coverage/5),
-    multi_failure_tester(64, fun find_coverage/5),
-    multi_failure_tester(128, fun find_coverage/5),
-    multi_failure_tester(256, fun find_coverage/5),
-    multi_failure_tester(512, fun find_coverage/5).
 
 multi_failure_tester(PartitionCount, CoverageFun) when PartitionCount >= 32 ->
     % If there are failures at least target_n_val appart, a r=2 coverage plan
@@ -1405,38 +1126,6 @@ n_keyspaces_test() ->
     %% any nval) cover the only keyspace
     ?assertEqual([0], partid(n_keyspaces({vnode_id, 0, 1}, 1))).
 
-covers_test() ->
-    %% Count the overlap between the sets
-    ?assertEqual(2, covers(?SET([1, 2]),
-                           ?SET([0, 1, 2, 3]))),
-    ?assertEqual(1, covers(?SET([1, 2]),
-                           ?SET([0, 1]))),
-    ?assertEqual(0, covers(?SET([1, 2, 3]),
-                           ?SET([4, 5, 6, 7]))).
-
-%% `find_best_vnode_for_keyspace' actually takes tagged tuples, but it
-%% works fine with plain ol' integers, and the logic is much easier to
-%% see this way
-best_vnode_test() ->
-    %% Given two vnodes 0 and 7, pick 0 because it has more of the
-    %% desired keyspaces
-    ?assertEqual(0, find_best_vnode_for_keyspace(
-                      ?SET([0, 1, 2, 3, 4]),
-                      [{2, 0, ?SET([6, 7, 0, 1, 2])},
-                       {1, 7, ?SET([5, 6, 7, 0, 1])}])),
-    %% Given two vnodes 0 and 7, pick 7 because they cover the same
-    %% keyspaces and 7 has the lower tiebreaker
-    ?assertEqual(7, find_best_vnode_for_keyspace(
-                      ?SET([0, 1, 2, 3, 4]),
-                      [{2, 0, ?SET([6, 7, 0, 1, 2])},
-                       {1, 7, ?SET([6, 7, 0, 1, 2])}])),
-    %% Given two vnodes 0 and 7, pick 0 because they cover the same
-    %% keyspaces and 0 has the lower tiebreaker
-    ?assertEqual(0, find_best_vnode_for_keyspace(
-                      ?SET([0, 1, 2, 3, 4]),
-                      [{2, 0, ?SET([6, 7, 0, 1, 2])},
-                       {3, 7, ?SET([6, 7, 0, 1, 2])}])).
-
 create_plan_test_() ->
     {foreach,
      fun cpsetup/0,
@@ -1449,6 +1138,7 @@ create_plan_test_() ->
     }.
 
 chash_init() ->
+    %% inspired by riak_core_ring:chash(riak_core_test_util:fake_ring(8, 3))
     {8,
      [{0,node1},
       {182687704666362864775460604089535377456991567872,node2},
