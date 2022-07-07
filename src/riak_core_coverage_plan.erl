@@ -1129,8 +1129,7 @@ n_keyspaces_test() ->
 create_plan_test_() ->
     {foreach,
      fun cpsetup/0,
-     [fun test_create_traditional_plan/1,
-      fun test_create_subpartition_plan/1,
+     [fun test_create_subpartition_plan/1,
       fun test_replace_traditional/1,
       fun test_replace_traditional2/1,
       fun test_replace_traditional3/1,
@@ -1320,19 +1319,4 @@ test_create_subpartition_plan(CHBin) ->
         ],
     [?_assertEqual(Plan,
                    create_subpartition_plan(all, 3, 16, 1, 3, riak_kv, CHBin, fun(_, _) -> [node1, node2, node3] end))].
-
-test_create_traditional_plan(CHBin) ->
-    Plan =
-        {[{1278813932664540053428224228626747642198940975104,
-           node2},
-          {730750818665451459101842416358141509827966271488,
-           node2},
-          {365375409332725729550921208179070754913983135744,
-           node3}],
-         [{730750818665451459101842416358141509827966271488,
-           [548063113999088594326381812268606132370974703616,
-            730750818665451459101842416358141509827966271488]}]},
-    [?_assertEqual(Plan,
-                   create_traditional_plan(all, 3, 1, 1234, riak_kv, CHBin, fun(_, _) -> [node1, node2, node3] end))].
-
 -endif.
