@@ -103,18 +103,18 @@
      ModState :: tuple()}.
 
 -callback process_results(Results :: any(), ModState :: tuple()) ->
-                            {ok, UpdModState :: tuple()} |
-                            {done, UpModState :: tuple()} |
-                            {error, Error :: any()}.
+    {ok, UpdModState :: tuple()} |
+    {done, UpModState :: tuple()} |
+    {error, Error :: any()}.
 
 -callback process_results(Vnode :: from(),
-                            Results :: any(), ModState :: tuple()) ->
-                                {ok, UpdModState :: tuple()} |
-                                {done, UpModState :: tuple()} |
-                                {error, Error :: any()}.
+                          Results :: any(), ModState :: tuple()) ->
+    {ok, UpdModState :: tuple()} |
+    {done, UpModState :: tuple()} |
+    {error, Error :: any()}.
 
 -callback finish(clean | {error, Reason :: any()}, ModState :: tuple()) ->
-                    {stop, normal, any()}.
+    {stop, normal, any()}.
 
 -optional_callbacks([process_results/2, process_results/3]).
     % must have one or the other
