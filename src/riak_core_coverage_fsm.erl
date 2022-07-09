@@ -92,14 +92,15 @@
 
 
 -callback init(From :: from(), RequestArgs :: list(any())) ->
-                {Request :: tuple(),
-                    VNodeSelector :: all | allup,
-                    NVal :: pos_integer(),
-                    PrimaryVNodeCoverage :: all | pos_integer(),
-                    NodeCheckService :: module(),
-                    VNodeMaster :: atom(),
-                    Timeout :: pos_integer()|infinity,
-                    ModState :: tuple()}.
+    {Request :: tuple(),
+     VNodeSelector :: all | allup,
+     NVal :: pos_integer(),
+     PrimaryVNodeCoverage :: all | pos_integer(),
+     NodeCheckService :: module(),
+     VNodeMaster :: atom(),
+     Timeout :: pos_integer()|infinity,
+     function() | module(),
+     ModState :: tuple()}.
 
 -callback process_results(Results :: any(), ModState :: tuple()) ->
                             {ok, UpdModState :: tuple()} |
