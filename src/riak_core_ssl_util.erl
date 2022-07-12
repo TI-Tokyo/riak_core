@@ -43,9 +43,10 @@
 -endif.
 
 openssl_suite(Cipher) ->
-    ssl_cipher:openssl_suite(Cipher).
+    ssl_cipher_format:suite_openssl_str_to_map(Cipher).
 openssl_suite_name(Cipher) ->
-    ssl_cipher:openssl_suite_name(Cipher).
+    ssl_cipher_format:suite_map_to_openssl_str(ssl_cipher_format:suite_bin_to_map(Cipher)).
+
 
 maybe_use_ssl(App) ->
     SSLOpts = [

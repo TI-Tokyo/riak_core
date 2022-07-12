@@ -633,7 +633,6 @@ get_bucket(Level, Bucket, State) ->
 %%% Internal functions
 %%%===================================================================
 
--ifndef(old_hash).
 md5(Bin) ->
     crypto:hash(md5, Bin).
 
@@ -650,25 +649,7 @@ esha_update(Ctx, Bin) ->
 
 esha_final(Ctx) ->
     crypto:hash_final(Ctx).
--else.
-md5(Bin) ->
-    crypto:md5(Bin).
 
--ifdef(TEST).
-esha(Bin) ->
-    crypto:sha(Bin).
--endif.
-
-esha_init() ->
-    crypto:sha_init().
-
-esha_update(Ctx, Bin) ->
-    crypto:sha_update(Ctx, Bin).
-
-esha_final(Ctx) ->
-    crypto:sha_final(Ctx).
-
--endif.
 
 -spec set_bucket(integer(), integer(), any(), hashtree()) -> hashtree().
 set_bucket(Level, Bucket, Val, State) ->
