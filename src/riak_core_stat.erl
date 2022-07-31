@@ -137,9 +137,6 @@ init([]) ->
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({update, {worker_pool, vnode_pool}}, State) ->
-    exometer_update([prefix(), ?APP, vnode, worker_pool], 1),
-    {noreply, State};
 handle_cast({update, {worker_pool, queue_time, Pool, QueueTime}}, State) ->
     exometer_update([prefix(), ?APP, worker_pool_queuetime, Pool], QueueTime),
     {noreply, State};
