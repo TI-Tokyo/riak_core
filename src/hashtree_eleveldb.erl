@@ -64,16 +64,7 @@
 
 -spec new(proplists:proplist()) -> {term(), string()}.
 new(Options) ->
-    DataDir = 
-    case proplists:get_value(segment_path, Options) of
-        undefined ->
-            Root = "/tmp/anti/level",
-            <<P:128/integer>> =
-                riak_core_util:md5(term_to_binary({os:timestamp(), make_ref()})),
-            filename:join(Root, integer_to_list(P));
-        SegmentPath ->
-            SegmentPath
-    end,
+    DataDir = hashtree:get_path(Options),
 
     DefaultWriteBufferMin = 4 * 1024 * 1024,
     DefaultWriteBufferMax = 14 * 1024 * 1024,

@@ -132,7 +132,8 @@
          mark_open_empty/2,
          mark_open_and_check/2,
          mark_clean_close/2,
-         get_env/2]).
+         get_env/2,
+         get_path/1]).
 -export([compare2/4]).
 -export([multi_select_segment/3]).
 
@@ -167,6 +168,7 @@
 -define(NUM_SEGMENTS, (1024*1024)).
 -define(WIDTH, 1024).
 -define(MEM_LEVELS, 0).
+-define(DEFAULT_BACKEND, hashtree_leveled).
 
 -define(NUM_KEYS_REQUIRED, 1000).
 
@@ -190,7 +192,7 @@
 
 -type next_rebuild() :: full | incremental.
 
--type db_module() :: hashtree_eleveldb.
+-type db_module() :: hashtree_eleveldb|hashtree_leveled.
 
 -record(state, {id                 :: tree_id_bin(),
                 index              :: index(),
@@ -207,7 +209,7 @@
                                        {delete, binary()}],
                 write_buffer_count :: integer(),
                 dirty_segments     :: hashtree_array(),
-                database_mod = hashtree_eleveldb :: db_module()
+                database_mod = ?DEFAULT_BACKEND :: db_module()
                }).
 
 -opaque hashtree() :: #state{}.
@@ -593,7 +595,12 @@ estimate_keys(State, CurrentSegment, Keys, MaxKeys) ->
 
 -spec key_hashes(hashtree(), integer()) -> [{integer(), orddict()}].
 key_hashes(State, Segment) ->
-    multi_select_segment(State, [Segment], fun(X) -> X end).
+    case multi_select_segment(State, [Segment], fun(X) -> X end) of
+        [] ->
+            [{Segment, []}];
+        NonEmptyResults ->
+            NonEmptyResults
+    end.
 
 -spec get_bucket(integer(), integer(), hashtree()) -> orddict().
 get_bucket(Level, Bucket, State) ->
@@ -645,7 +652,7 @@ del_bucket(Level, Bucket, State) ->
 new_segment_store(Opts) ->
     Mod =
         application:get_env(
-            riak_core, hashtree_store_module, hashtree_eleveldb),
+            riak_core, hashtree_store_module, ?DEFAULT_BACKEND),
     {Ref, DataDir} = Mod:new(Opts),
     {Ref, DataDir, Mod}.
 
@@ -680,6 +687,19 @@ sha(Chunk, Bin, Ctx) ->
 get_env(Key, Default) ->
     CoreEnv = app_helper:get_env(riak_core, Key, Default),
     app_helper:get_env(riak_kv, Key, CoreEnv).
+
+-spec get_path(list()) -> file:filename_all(). 
+get_path(Options) ->
+    case proplists:get_value(segment_path, Options) of
+        undefined ->
+            Root = "/tmp/anti/level",
+            <<P:128/integer>> =
+                riak_core_util:md5(
+                    term_to_binary({os:timestamp(), make_ref()})),
+            filename:join(Root, integer_to_list(P));
+        SegmentPath ->
+            SegmentPath
+    end.
 
 -spec update_levels(integer(),
                     [{integer(), [{integer(), binary()}]}],
@@ -1295,7 +1315,13 @@ delete_without_update_test() ->
     ?assertEqual([], Diff),
     ?assertEqual([{missing, <<"k">>}], Diff2).
 
-opened_closed_test() ->
+opened_closed_test_() ->
+    %% When using the leveled backend the fake_close will result in a pause
+    %% for the snapshot (which isn't closed) to close - hence need for timeout.
+    %% Wait will be 20s - https://github.com/martinsumner/leveled/pull/411
+    {timeout, 60, fun opened_closed_tester/0}.
+
+opened_closed_tester() ->
     TreeId0 = {0,0},
     TreeId1 = term_to_binary({0,0}),
     A1 = new(TreeId0, [{segment_path, "t1000"}]),
@@ -1328,12 +1354,13 @@ opened_closed_test() ->
                  proplists:get_value(closed, read_meta_term(TreeId1, [], AA3))},
 
     fake_close(AA3),
-
+    
     AAA1 = new(TreeId0,[{segment_path, "t1000"}]),
     AAA2 = mark_open_and_check(TreeId0, AAA1),
     StatusAAA2 = {proplists:get_value(opened, read_meta_term(TreeId1, [], AAA2)),
                   proplists:get_value(closed, read_meta_term(TreeId1, [], AAA2))},
 
+    
     AAA3 = mark_clean_close(TreeId0, AAA2),
     close(AAA3),
 
