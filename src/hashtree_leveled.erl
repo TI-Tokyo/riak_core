@@ -62,6 +62,7 @@ new(Options) ->
         {max_journalobjectcount, 20000},
             %% one tenth of standard size - as head_only
         {log_level, warn},
+        {forced_logs, [b0001, b0002, b0003]},
         {database_id, 0},
         {head_only, with_lookup},
         {cache_size, 2000},
@@ -80,10 +81,11 @@ new(Options) ->
     {DB, DataDir}.
 
 -spec close(term(), term()) -> ok.
+close(DB, undefined) ->
+    leveled_bookie:book_close(DB);
 close(DB, Snapshot) ->
-    close_iterator(Snapshot),
-    catch leveled_bookie:book_close(DB),
-    ok.
+    leveled_bookie:book_close(Snapshot),
+    leveled_bookie:book_close(DB).
 
 -spec destroy(string()) -> ok.
 destroy(Path) ->
@@ -102,10 +104,17 @@ encode_key({meta, Key}) ->
 
 
 -spec snapshot(term(), term()) -> {ok, term()}.
+snapshot(DB, undefined) ->
+    {ok, Snapshot} = leveled_bookie:book_start([{snapshot_bookie, DB}]),
+    ok = leveled_bookie:book_loglevel(Snapshot, warn),
+    ok =
+        leveled_bookie:book_addlogs(
+            Snapshot, [b0001, b0002, b0003, i0027, p0007]
+        ),
+    {ok, Snapshot};
 snapshot(DB, Snapshot) ->
-    %% Abuse eleveldb iterators as snapshots
-    catch leveled_bookie:book_close(Snapshot),
-    leveled_bookie:book_start([{snapshot_bookie, DB}]).
+    ok = leveled_bookie:book_close(Snapshot),
+    snapshot(DB, undefined).
 
 -spec get(term(), db_key()) -> {ok, binary()}| not_found | {error, any()}.
 get(DB, {Bucket, Key}) ->
@@ -213,16 +222,6 @@ multi_select_segment(Id, Itr, Segments, F) ->
         ),
     lists:reverse(Result).
 
-
-
-%%%===================================================================
-%%% Internal Functions
-%%%===================================================================
-
-
-close_iterator(Itr) ->
-    catch leveled_bookie:book_close(Itr),
-    ok.
 
 
 %%%===================================================================
