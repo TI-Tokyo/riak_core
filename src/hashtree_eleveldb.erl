@@ -22,6 +22,7 @@
 -export([
     new/1,
     close/2,
+    close_group/1,
     destroy/1,
     get/2,
     mput/2,
@@ -101,6 +102,10 @@ close(DB, Snapshot) ->
     close_iterator(Snapshot),
     catch eleveldb:close(DB),
     ok.
+
+-spec close_group(list({term(), term()})) -> ok.
+close_group(DBList) ->
+    lists:foreach(fun({DB, Snapshot}) -> close(DB, Snapshot) end, DBList).
 
 -spec destroy(string()) -> ok.
 destroy(Path) ->

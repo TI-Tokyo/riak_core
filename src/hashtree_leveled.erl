@@ -22,6 +22,7 @@
 -export([
     new/1,
     close/2,
+    close_group/1,
     destroy/1,
     get/2,
     mput/2,
@@ -62,7 +63,7 @@ new(Options) ->
         {max_journalobjectcount, 20000},
             %% one tenth of standard size - as head_only
         {log_level, warn},
-        {forced_logs, [b0001, b0002, b0003]},
+        {forced_logs, [b0001, b0002, b0003, i0023, p0042]},
         {database_id, 0},
         {head_only, with_lookup},
         {cache_size, 2000},
@@ -81,11 +82,27 @@ new(Options) ->
     {DB, DataDir}.
 
 -spec close(term(), term()) -> ok.
+close(undefined, undefined) ->
+    ok;
 close(DB, undefined) ->
-    leveled_bookie:book_close(DB);
+    close_db(DB);
 close(DB, Snapshot) ->
-    leveled_bookie:book_close(Snapshot),
-    leveled_bookie:book_close(DB).
+    close_db(Snapshot),
+    close(DB, undefined).
+
+%% @doc
+%% Close all the snapshots in the group of hashtrees, before closing the actual
+%% stores.  Otherwise if each {Snapshot, DB} pair is closed in turn, and the
+%% store is a shared (linked) store it might be it will be closed prior to a
+%% snapshot in another pair on the same store.  In this case the store will
+%% wait for 20s to close to give a chance for the snapshot to clear.
+-spec close_group(list({term(), term()})) -> ok.
+close_group(DBList) ->
+    {DBs, Snapshots} = lists:unzip(DBList),
+    lists:foreach(
+        fun(DB) -> close_db(DB) end,
+        lists:usort(Snapshots) ++ lists:usort(DBs)).
+
 
 -spec destroy(string()) -> ok.
 destroy(Path) ->
@@ -113,7 +130,7 @@ snapshot(DB, undefined) ->
         ),
     {ok, Snapshot};
 snapshot(DB, Snapshot) ->
-    ok = leveled_bookie:book_close(Snapshot),
+    close_db(Snapshot),
     snapshot(DB, undefined).
 
 -spec get(term(), db_key()) -> {ok, binary()}| not_found | {error, any()}.
@@ -222,6 +239,22 @@ multi_select_segment(Id, Itr, Segments, F) ->
         ),
     lists:reverse(Result).
 
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+
+-spec close_db(pid()|undefined) -> ok.
+close_db(undefined) ->
+    ok;
+close_db(Pid) when is_pid(Pid) ->
+    case is_process_alive(Pid) of
+        true ->
+            leveled_bookie:book_close(Pid);
+        false ->
+            ok
+    end.
 
 
 %%%===================================================================

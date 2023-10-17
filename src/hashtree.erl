@@ -113,6 +113,7 @@
          rehash_tree/1,
          flush_buffer/1,
          close/1,
+         close_group/1,
          destroy/1,
          read_meta/2,
          write_meta/3,
@@ -255,6 +256,7 @@ new(TreeId, LinkedStore, Options) ->
             proplist(),
             module()) -> hashtree().
 new({Index,TreeId}, DB, Path, Options, Mod) ->
+    ?LOG_INFO("New segment store ~w for ~w ~w", [DB, TreeId, Index]),
     NumSegments = proplists:get_value(segments, Options, ?NUM_SEGMENTS),
     Width = proplists:get_value(width, Options, ?WIDTH),
     MemLevels = proplists:get_value(mem_levels, Options, ?MEM_LEVELS),
@@ -278,9 +280,19 @@ new({Index,TreeId}, DB, Path, Options, Mod) ->
 -spec close(hashtree()) -> hashtree().
 close(State) ->
     Mod = State#state.database_mod,
+    ?LOG_INFO(
+        "Close store ~w and snapshot ~w for ~w ~w",
+        [State#state.ref, State#state.itr, State#state.id, State#state.index]),
     ok = Mod:close(State#state.ref, State#state.itr),
-    State#state{itr=undefined}.
+    State#state{itr=undefined, ref=undefined}.
 
+-spec close_group(list(hashtree())) -> ok.
+close_group(HashtreeList) ->
+    Head = hd(HashtreeList),
+    Mod = Head#state.database_mod,
+    Mod:close_group(
+        lists:map(fun(S) -> {S#state.ref, S#state.itr} end, HashtreeList)
+    ).
 
 -spec destroy(hashtree()|string()) -> ok.
 destroy(Path) when is_list(Path) ->
@@ -375,6 +387,10 @@ update_snapshot(State=#state{segments=NumSegments}) ->
 
 -spec update_tree(hashtree()) -> hashtree().
 update_tree(State) ->
+    ?LOG_INFO(
+        "Update tree ~w ~w with db ~w snapshot ~w",
+        [State#state.id, State#state.index, State#state.ref, State#state.itr]
+    ),
     State2 = flush_buffer(State),
     State3 = snapshot(State2),
     update_perform(State3).
@@ -864,12 +880,16 @@ hashes(State, Segments) ->
 -spec snapshot(hashtree()) -> hashtree().
 snapshot(State) ->
     Mod = State#state.database_mod,
+    ?LOG_INFO(
+        "Update snapshot - db ~w snapshot ~w",
+        [State#state.ref, State#state.itr]),
     {ok, Itr} = Mod:snapshot(State#state.ref, State#state.itr),
     State#state{itr=Itr}.
 
 -spec multi_select_segment(
     hashtree(), list('*'|integer()), select_fun(T)) -> [{integer(), T}].
 multi_select_segment(#state{id=Id, itr=Itr, database_mod=Mod}, Segments, F) ->
+    ?LOG_INFO("Multi select segment on snapshot ~w", [Itr]),
     Mod:multi_select_segment(Id, Itr, Segments, F).
 
 
