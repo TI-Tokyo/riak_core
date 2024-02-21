@@ -27,6 +27,7 @@
          filter/2,
          collect/0, collect/1, collect/2,
          results/0,
+         stop_and_clear/0,
          stop_collect/0]).
 -export([test_all_events/1]).
 
