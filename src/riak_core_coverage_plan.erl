@@ -636,7 +636,7 @@ changing_repeated_vnode_tester(CoverageFun, Runs) ->
     Partitions = lists:seq(0, 31),
     GetVnodesUsedFun =
         fun(_I) ->
-            R = rand:uniform(99999),
+            R = random:uniform(99999),
             {Vnodes0, Coverage0} =
                 ring_tester(32, CoverageFun, R, 3, [], 1),
             ?assertEqual(Partitions, Coverage0),
@@ -772,7 +772,7 @@ ring_tester(PartitionCount, CoverageFun,
 nonstandardring_tester(PartitionCount, CoverageFun) ->
     Offset = 2,
     NVal = 3,
-    OneDownVnode = rand:uniform(PartitionCount) - 1,
+    OneDownVnode = random:uniform(PartitionCount) - 1,
     UnavailableKeySpaces = [OneDownVnode],
     PVC = 2,
     {ok, VnodeCovers} =
@@ -814,10 +814,10 @@ multifailure_r2_pre_test() ->
 multi_failure_tester(PartitionCount, CoverageFun) when PartitionCount >= 32 ->
     % If there are failures at least target_n_val appart, a r=2 coverage plan
     % can still be produced
-    ReqId = rand:uniform(99999),
+    ReqId = random:uniform(99999),
     NVal = 3,
     PVC = 2,
-    C = rand:uniform(PartitionCount div 8),
+    C = random:uniform(PartitionCount div 8),
     UnavailableKeySpaces = lists:map(fun(I) -> I * 4 - C end, lists:seq(1, 8)),
     {ok, VnodeCovers} =
         CoverageFun(ReqId, NVal, PartitionCount,
@@ -839,7 +839,7 @@ multi_failure_tester(PartitionCount, CoverageFun) when PartitionCount >= 32 ->
 
     % Fail two vnodes together - now can only get partial coverage from a r=2
     % plan
-    RVN = rand:uniform(PartitionCount),
+    RVN = random:uniform(PartitionCount),
     UnavailableKeySpaces1 = [RVN - 1, (RVN - 2) rem PartitionCount],
     {insufficient_vnodes_available, _, VnodeCovers1} =
         CoverageFun(ReqId, NVal, PartitionCount,
