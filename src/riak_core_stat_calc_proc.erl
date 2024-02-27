@@ -149,7 +149,7 @@ cache_get(TS, TTL) ->
     check_freshness(TS, TTL).
 
 check_freshness(TStamp, TTL) ->
-    case (TStamp + TTL) > folsom_utils:now_epoch() of
+    case (TStamp + TTL) > now_epoch() of
         true ->
              hit;
         false ->
@@ -168,7 +168,7 @@ do_calc_stat(Stat) ->
     spawn_link(
       fun() ->
               StatVal = riak_core_stat_q:calc_stat(Stat),
-              gen_server:cast(ServerPid, {value, StatVal, folsom_utils:now_epoch()}) end
+              gen_server:cast(ServerPid, {value, StatVal, now_epoch()}) end
      ).
 
 maybe_tag_stale(Value) ->
@@ -180,3 +180,8 @@ maybe_tag_stale(Value) ->
             iolist_to_binary(V)
     end.
 
+now_epoch() ->
+    now_epoch(os:timestamp()).
+
+now_epoch({Mega, Sec, _}) ->
+    (Mega * 1000000 + Sec).
