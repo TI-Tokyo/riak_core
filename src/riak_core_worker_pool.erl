@@ -302,6 +302,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     pid(), term(), term(), list(monitor())) -> list(monitor()).
 monitor_worker(Worker, From, Work, Monitors) ->
     Ref = erlang:monitor(process, Worker),
+    %% ukeysort deletes all monitors from Monitors with same worker 
     lists:ukeysort(1, [{Worker, Ref, From, Work} | Monitors]).
 
 -spec demonitor_worker(pid(), list(monitor())) -> list(monitor()). 
