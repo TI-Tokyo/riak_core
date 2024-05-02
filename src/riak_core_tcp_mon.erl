@@ -455,14 +455,30 @@ nodeupdown_test_() ->
 ssl_test_() ->
     %% Test depends on self-signed certificates
     %% Certificates generated with:
-    %% openssl req -x509 -newkey rsa:4096 -keyout site1-key.pem -out site1-cert.pem -sha256 -days 3650 -subj "/CN=site1.basho.com" -nodes
-    %% openssl req -x509 -newkey rsa:4096 -keyout site2-key.pem -out site2-cert.pem -sha256 -days 3650 -subj "/CN=site1.basho.com" -nodes
+    %% openssl genrsa -aes256 -out ca.key 4096
+    %% openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj '/CN=ca.basho.com'
+    %% 
+    %% openssl req -new -nodes -out site1.csr -newkey rsa:4096 -keyout site1.key -subj '/CN=site1.basho.com'
+    %% openssl req -new -nodes -out site2.csr -newkey rsa:4096 -keyout site1.key -subj '/CN=site2.basho.com'
+    %% 
+    %% openssl x509 -req -in site1.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out site1.crt -days 3650 -sha256
+    %% openssl x509 -req -in site2.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out site2.crt -days 3650 -sha256
     {timeout, 60, fun() ->
         ssl:start(),
         % Set the stat gathering interval to 100ms
         {ok, TCPMonPid} = riak_core_tcp_mon:start_link([{interval, 100}]),
         % set up a server to hear us out.
-        {ok, LS} = ssl:listen(0, [{active, true}, binary, {certfile, "test/site1-cert.pem"}, {keyfile, "test/site1-key.pem"}]),
+        {ok, LS} =
+            ssl:listen(
+                0,
+                [
+                    {active, true},
+                    binary,
+                    {certfile, "test/site1.crt"},
+                    {keyfile, "test/site1.key"},
+                    {cacertfile, "test/ca.crt"}
+                ]
+                ),
         {ok, {_, Port}} = ssl:sockname(LS),
         spawn(fun () ->
             %% server
@@ -478,7 +494,19 @@ ssl_test_() ->
             ssl_recv_loop(SslSock)
         end),
 
-        {ok, Socket} = ssl:connect("localhost", Port, [binary, {active, true}, {certfile, "test/site2-cert.pem"}, {keyfile, "test/site2-key.pem"}]),
+        {ok, Socket} =
+            ssl:connect(
+                "localhost",
+                Port,
+                [{active, true},
+                    {customize_hostname_check,
+                        [{match_fun,
+                            fun("localhost", {cn,"site1.basho.com"}) -> true end}]},
+                    {certfile, "test/site2.crt"},
+                    {keyfile, "test/site2.key"},
+                    {cacertfile, "test/ca.crt"}
+                ]
+                ),
         riak_core_tcp_mon:monitor(Socket, "test", ssl),
         % so we have stats to see
         lists:foreach(fun(_) ->
