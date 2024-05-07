@@ -151,7 +151,7 @@ cache_get(TS, TTL) ->
 check_freshness(TStamp, TTL) ->
     case (TStamp + TTL) > now_epoch() of
         true ->
-             hit;
+            hit;
         false ->
             stale
     end.
@@ -166,10 +166,10 @@ maybe_get_stat(_Stat, From, Pid, Awaiting) ->
 do_calc_stat(Stat) ->
     ServerPid = self(),
     spawn_link(
-      fun() ->
-              StatVal = riak_core_stat_q:calc_stat(Stat),
-              gen_server:cast(ServerPid, {value, StatVal, now_epoch()}) end
-     ).
+        fun() ->
+            StatVal = riak_core_stat_q:calc_stat(Stat),
+            gen_server:cast(ServerPid, {value, StatVal, now_epoch()}) end
+        ).
 
 maybe_tag_stale(Value) ->
     case Value of
@@ -181,7 +181,4 @@ maybe_tag_stale(Value) ->
     end.
 
 now_epoch() ->
-    now_epoch(os:timestamp()).
-
-now_epoch({Mega, Sec, _}) ->
-    (Mega * 1000000 + Sec).
+    os:system_time(seconds).
