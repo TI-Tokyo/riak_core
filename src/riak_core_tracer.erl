@@ -27,6 +27,7 @@
          filter/2,
          collect/0, collect/1, collect/2,
          results/0,
+         stop_and_clear/0,
          stop_collect/0]).
 -export([test_all_events/1]).
 
@@ -107,7 +108,7 @@ handle_call({filter, MFs, Filter}, _From, State) ->
 handle_call({collect, Duration, Nodes}, _From, State) ->
     cancel_timer(State#state.stop_tref),
     Tref = timer:send_after(Duration, collect_timeout),
-    dbg:stop_clear(),
+    stop_and_clear(),
     dbg:tracer(process, {fun ({trace, _, call, {?MODULE, trigger_sentinel, _}}, Pid) ->
                                  gen_server:cast(Pid, stop_sentinel),
                                  Pid;
@@ -161,7 +162,7 @@ handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
 handle_cast(stop_sentinel, State) ->
-    dbg:stop_clear(),
+    stop_and_clear(),
     case State#state.stop_from of
         undefined ->
             ok;
@@ -182,6 +183,15 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
      {ok, State}.
+
+
+-if(?OTP_RELEASE >= 25).
+stop_and_clear() ->
+    dbg:stop().
+-else.
+stop_and_clear() ->
+    dbg:stop_clear().
+-endif.
 
 %%%===================================================================
 %%% Internal functions
