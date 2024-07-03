@@ -130,17 +130,23 @@ upgrade_client_to_ssl(Socket, App) ->
         false ->
             {error, no_ssl_config};
         Config ->
-            ssl:connect(Socket, Config)
+            ssl:connect(Socket, Config -- server_only_options())
     end.
+
+client_only_options() ->
+    [{server_name_indication, disable}].
 
 upgrade_server_to_ssl(Socket, App) ->
     case maybe_use_ssl(App) of
         false ->
             {error, no_ssl_config};
         Config ->
-            ssl_handshake(Socket, Config)
+            ssl_handshake(Socket, Config -- client_only_options())
     end.
 
+server_only_options() ->
+    [{fail_if_no_peer_cert, true}].
+    
 load_certs(undefined) ->
     undefined;
 load_certs(CertDirOrFile) ->
