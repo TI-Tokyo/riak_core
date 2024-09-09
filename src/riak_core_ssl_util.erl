@@ -130,17 +130,32 @@ upgrade_client_to_ssl(Socket, App) ->
         false ->
             {error, no_ssl_config};
         Config ->
-            ssl:connect(Socket, Config)
+            ssl:connect(Socket, deduct_options(Config, server_only_options()))
     end.
+
+client_only_options() ->
+    [server_name_indication].
+
+server_only_options() ->
+    [fail_if_no_peer_cert].
+    
+deduct_options(StandardOptions, SpecificOptions) ->
+    lists:foldl(
+        fun(K, CfgAcc) -> 
+            lists:keydelete(K, 1, CfgAcc)
+        end,
+        StandardOptions,
+        SpecificOptions).
 
 upgrade_server_to_ssl(Socket, App) ->
     case maybe_use_ssl(App) of
         false ->
             {error, no_ssl_config};
         Config ->
-            ssl_handshake(Socket, Config)
+            ssl_handshake(
+                Socket, deduct_options(Config, client_only_options()))
     end.
-
+    
 load_certs(undefined) ->
     undefined;
 load_certs(CertDirOrFile) ->
