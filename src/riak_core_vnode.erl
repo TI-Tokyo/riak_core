@@ -1122,9 +1122,10 @@ queue_work(PoolName, Work, From, VnodeWrkPool) ->
 %% ===================================================================
 
 %% @doc Reveal the underlying module state for testing
--spec(get_modstate(pid()) -> {atom(), #state{}}).
+-spec get_modstate(pid()) -> {module(), term()}.
 get_modstate(Pid) ->
-    {_StateName, State} = gen_fsm:sync_send_all_state_event(Pid, current_state),
+    {_StateName, State} =
+        gen_fsm:sync_send_all_state_event(Pid, current_state),
     {State#state.mod, State#state.modstate}.
 
 -ifdef(TEST).
