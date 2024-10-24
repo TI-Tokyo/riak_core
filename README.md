@@ -1,6 +1,6 @@
 # Riak Core
 
-![Riak Core OpenRiak Status](https://github.com/OpenRiak/riak_core/actions/workflows/erlang.yml/badge.svg?branch=openriak-3.2)
+![Riak Core OpenRiak Status](https://github.com/OpenRiak/riak_core/actions/workflows/erlang.yml/badge.svg?branch=openriak-3.4)
 
 Riak Core is the distributed systems framework that forms the basis of
 how [Riak](http://github.com/basho/riak) distributes data and scales.
