@@ -1,6 +1,7 @@
 %% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2013 Basho Technologies, Inc.
+%% Copyright (c) 2026 TI Tokyo.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -27,24 +28,34 @@
 -define(HASH_ITERATIONS, 65536).
 %% TODO this should call a default_hash_func() function to get default based on erlang version
 -define(HASH_FUNCTION, sha).
+-define(KEY_LENGTH, 20).  %% the value used in pbkdf2 for sha
 -define(AUTH_NAME, pbkdf2).
 
 %% @doc Hash a plaintext password, returning hashed password and algorithm details
+-spec hash_password(binary()) ->
+          {ok, binary(), ?AUTH_NAME, ?HASH_FUNCTION, binary(), pos_integer()}.
 hash_password(BinaryPass) when is_binary(BinaryPass) ->
     % TODO: Do something more with the salt?
     % Generate salt the simple way
     Salt = crypto:strong_rand_bytes(?SALT_LENGTH),
 
     % Hash the original password and store as hex
-    {ok, HashedPass} = pbkdf2:pbkdf2(?HASH_FUNCTION, BinaryPass, Salt, ?HASH_ITERATIONS),
-    HexPass = pbkdf2:to_hex(HashedPass),
+    HashedPass = crypto:pbkdf2_hmac(
+                   ?HASH_FUNCTION, BinaryPass, Salt, ?HASH_ITERATIONS, ?KEY_LENGTH),
+    HexPass = to_hex(HashedPass),
     {ok, HexPass, ?AUTH_NAME, ?HASH_FUNCTION, Salt, ?HASH_ITERATIONS}.
 
 
 %% @doc Check a plaintext password with a hashed password
-check_password(BinaryPass, HashedPassword, HashFunction, Salt, HashIterations) when is_binary(BinaryPass) ->
-
+-spec check_password(binary(), binary(), ?HASH_FUNCTION, binary(), pos_integer()) ->
+          boolean().
+check_password(BinaryPass, HashedPassword, HashFunction, Salt, HashIterations)
+  when is_binary(BinaryPass) ->
     % Hash EnteredPassword to compare to HashedPassword
-    {ok, HashedPass} = pbkdf2:pbkdf2(HashFunction, BinaryPass, Salt, HashIterations),
-    HexPass = pbkdf2:to_hex(HashedPass),
-    pbkdf2:compare_secure(HexPass, HashedPassword).
+    HashedPass = crypto:pbkdf2_hmac(
+                   HashFunction, BinaryPass, Salt, HashIterations, ?KEY_LENGTH),
+    HexPass = to_hex(HashedPass),
+    HexPass == HashedPassword.
+
+to_hex(Data) when is_binary(Data) ->
+    string:lowercase(binary:encode_hex(Data)).
