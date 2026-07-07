@@ -55,7 +55,22 @@ check_password(BinaryPass, HashedPassword, HashFunction, Salt, HashIterations)
     HashedPass = crypto:pbkdf2_hmac(
                    HashFunction, BinaryPass, Salt, HashIterations, ?KEY_LENGTH),
     HexPass = to_hex(HashedPass),
-    HexPass == HashedPassword.
+    compare_secure(binary_to_list(HexPass), binary_to_list(HashedPassword)).
 
-to_hex(Data) when is_binary(Data) ->
+
+%% copied, slightly simplified, from erlang-pbkdf2/src/pbkdf2.erl
+to_hex(Data) ->
     string:lowercase(binary:encode_hex(Data)).
+
+compare_secure(X, Y) ->
+    case length(X) == length(Y) of
+        true ->
+            compare_secure(X, Y, 0);
+        false ->
+            false
+    end.
+
+compare_secure([X|RestX], [Y|RestY], Result) ->
+    compare_secure(RestX, RestY, (X bxor Y) bor Result);
+compare_secure([], [], Result) ->
+    Result == 0.
