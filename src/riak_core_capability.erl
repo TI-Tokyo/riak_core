@@ -212,12 +212,11 @@ init_state(Registered) ->
 
 handle_call({register, Capability, Info}, _From, State) ->
     State2 = register_capability(node(), Capability, Info, State),
-    State3 = update_supported(State2),
-    State4 = renegotiate_capabilities(State3),
-    publish_supported(State4),
-    update_local_cache(State4),
-    save_registered(State4#state.registered),
-    {reply, ok, State4}.
+    State3 = update_supported(State2),  %% also renegotiate
+    publish_supported(State3),
+    update_local_cache(State3),
+    save_registered(State3#state.registered),
+    {reply, ok, State3}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
